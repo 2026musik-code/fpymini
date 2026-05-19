@@ -5,7 +5,7 @@ compatibility_date = "2024-05-12"
 # Bind KV Namespace for cache
 [[kv_namespaces]]
 binding = "patungan"
-id = "<128e96cf8f334ca8a1b20897a65fefa8>"
+id = "128e96cf8f334ca8a1b20897a65fefa8"
 
 # Bind R2 Bucket for storage if needed
 [[r2_buckets]]
