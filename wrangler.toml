@@ -1,0 +1,16 @@
+name = "ai-studio-web"
+main = "worker.ts"
+compatibility_date = "2024-05-12"
+
+# Bind KV Namespace for cache
+[[kv_namespaces]]
+binding = "patungan"
+id = "<YOUR_KV_NAMESPACE_ID>"
+
+# Bind R2 Bucket for storage if needed
+[[r2_buckets]]
+binding = "vpsai"
+bucket_name = "<YOUR_R2_BUCKET_NAME>"
+
+[build]
+command = "npm run build"

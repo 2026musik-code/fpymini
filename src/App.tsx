@@ -229,23 +229,23 @@ function MainApp() {
             </div>
 
             {/* Provider List (Horizontal Scroll) */}
-            <div className="w-full flex items-center overflow-x-auto no-scrollbar gap-3 px-3 py-2 bg-zinc-950 border-b border-zinc-900 shrink-0 z-10">
+            <div className="w-full flex items-center overflow-x-auto no-scrollbar gap-2.5 px-2 py-1.5 bg-zinc-950 border-b border-zinc-900 shrink-0 z-10">
                {PROVIDERS.map((provider) => {
                  const isActive = activeProvider === provider.id;
                  return (
                    <button 
                      key={provider.id}
                      onClick={() => setActiveProvider(provider.id)}
-                     className={`flex flex-col items-center gap-1 shrink-0 group transition-all`}
+                     className={`flex flex-col items-center gap-0.5 shrink-0 group transition-all`}
                    >
-                     <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${isActive ? 'ring-2 ring-gold-500 ring-offset-1 ring-offset-zinc-950 scale-105' : 'ring-1 ring-zinc-800 hover:ring-zinc-600'}`}>
+                     <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isActive ? 'ring-2 ring-gold-500 ring-offset-1 ring-offset-zinc-950 scale-105' : 'ring-1 ring-zinc-800 hover:ring-zinc-600'}`}>
                         <img 
                           src={`https://api.dicebear.com/7.x/initials/svg?seed=${provider.name}&backgroundColor=${provider.color}&textColor=ffffff`} 
                           alt={provider.name}
                           className="w-full h-full rounded-full object-cover p-0.5"
                         />
                      </div>
-                     <span className={`text-[9px] font-medium transition-colors ${isActive ? 'text-gold-500' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
+                     <span className={`text-[8.5px] font-medium transition-colors ${isActive ? 'text-gold-500' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
                        {provider.name}
                      </span>
                    </button>
