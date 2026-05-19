@@ -5,12 +5,12 @@ compatibility_date = "2024-05-12"
 # Bind KV Namespace for cache
 [[kv_namespaces]]
 binding = "patungan"
-id = "<YOUR_KV_NAMESPACE_ID>"
+id = "128e96cf8f334ca8a1b20897a65fefa8"
 
 # Bind R2 Bucket for storage if needed
 [[r2_buckets]]
 binding = "vpsai"
-bucket_name = "<YOUR_R2_BUCKET_NAME>"
+bucket_name = "vpsai"
 
 [build]
 command = "npm run build"
