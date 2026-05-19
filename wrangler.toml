@@ -14,3 +14,6 @@ bucket_name = "vpsai"
 
 [build]
 command = "npm run build"
+
+[site]
+bucket = "./dist"

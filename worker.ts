@@ -10,7 +10,7 @@ const app = new Hono();
 app.route('/', api);
 
 // Serve static assets from Cloudflare Workers Sites
-app.get('/*', serveStatic({ root: './', manifest }));
-app.get('*', serveStatic({ path: './index.html', manifest })); // SPA fallback
+app.get('/*', serveStatic({ manifest }));
+app.get('*', serveStatic({ path: 'index.html', manifest })); // SPA fallback
 
 export default app;
