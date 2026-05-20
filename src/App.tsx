@@ -1,11 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import SettingsModal from "./components/SettingsModal";
 import EpisodeViewer from "./components/EpisodeViewer";
 import { Settings, Loader2, PlaySquare, Home, Search, History, User, Clapperboard, ChevronRight } from "lucide-react";
-import { auth, db, loginWithGoogle, logoutUser } from "./lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
 import Admin from "./Admin";
 
 type TabAction = 'home' | 'search' | 'history' | 'profile';
@@ -38,36 +35,42 @@ function MainApp() {
   const [showVipModal, setShowVipModal] = useState(false);
   
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const token = localStorage.getItem('fypmini_token');
+    if (!token) {
+      setCurrentUser(null);
+      setUserData(null);
       setIsAuthChecking(false);
-    });
-    return unsub;
-  }, []);
+      return;
+    }
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (currentUser) {
-        const docRef = doc(db, "users", currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setUserData(docSnap.data());
-        }
+    fetch('/api/user/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.user) {
+        setCurrentUser(data.user);
+        setUserData(data.user);
       } else {
+        setCurrentUser(null);
         setUserData(null);
       }
-    };
-    fetchUserData();
-  }, [currentUser]);
+    })
+    .catch(() => {
+      setCurrentUser(null);
+      setUserData(null);
+    })
+    .finally(() => {
+      setIsAuthChecking(false);
+    });
+  }, []);
 
   useEffect(() => {
     const fetchSettings = async () => {
        try {
-         const docRef = doc(db, "settings", "global");
-         const docSnap = await getDoc(docRef);
-         if (docSnap.exists()) {
-           setAppSettings(docSnap.data());
-         }
+         const res = await fetch('/api/admin/settings');
+         const data = await res.json();
+         setAppSettings(data.settings || { vipPrice: 0, popupText: "", popupImageUrl: "" });
        } catch (e) {
          console.error("Failed to load settings");
        }
@@ -348,14 +351,11 @@ function MainApp() {
                           <User className="w-10 h-10 text-zinc-600" />
                         </div>
                         <h2 className="text-xl font-bold text-white mb-2">Guest User</h2>
-                        <p className="text-zinc-400 text-sm mb-8 px-4">Login with Google to sync your watch history and upgrade your viewing limits.</p>
+                        <p className="text-zinc-400 text-sm mb-8 px-4">Login to sync your watch history and upgrade your viewing limits.</p>
                         <button 
-                          onClick={async () => {
-                            try {
-                              await loginWithGoogle();
-                            } catch (error: any) {
-                              alert("Login failed: " + error.message + "\n\nIf you see 'auth/unauthorized-domain', you need to add your Cloudflare Workers domain (the URL you are on now) to your Firebase Console -> Authentication -> Settings -> Authorized domains.");
-                            }
+                          onClick={() => {
+                            localStorage.removeItem('fypmini_token');
+                            window.location.reload();
                           }}
                           className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10"
                         >
@@ -382,7 +382,10 @@ function MainApp() {
                             <p className="text-zinc-400 text-xs font-mono max-w-[150px] truncate">{currentUser?.email || "No email"}</p>
                           </div>
                           <button 
-                            onClick={logoutUser}
+                            onClick={() => {
+  localStorage.removeItem('fypmini_token');
+  window.location.reload();
+}}
                             className="px-3 py-1.5 text-xs font-semibold text-red-400 bg-red-400/10 rounded-lg hover:bg-red-400/20"
                           >
                             Logout
@@ -543,7 +546,7 @@ function MainApp() {
   );
 }
 
-export function AuthScreen() {
+export function AuthScreen({ onLoginSuccess }: { onLoginSuccess: (user: any, token: string) => void }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -556,23 +559,22 @@ export function AuthScreen() {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const { signInWithEmailAndPassword } = await import('firebase/auth');
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        const { createUserWithEmailAndPassword } = await import('firebase/auth');
-        await createUserWithEmailAndPassword(auth, email, password);
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Authentication failed');
       }
+      
+      onLoginSuccess(data.user, data.token);
     } catch (err: any) {
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('Invalid email or password.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('Email already in use. Please log in.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Password should be at least 6 characters.');
-      } else {
-        setError(err.message || 'Authentication failed');
-      }
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -637,43 +639,35 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      
-      if (currentUser) {
-         try {
-           const userRef = doc(db, "users", currentUser.uid);
-           const userSnap = await getDoc(userRef);
-           if (!userSnap.exists()) {
-             await setDoc(userRef, {
-               uid: currentUser.uid,
-               email: currentUser.email,
-               displayName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-               avatarUrl: currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`,
-               dailyViews: 0,
-               dailyViewsMax: 42,
-               accountTier: "free",
-               isBanned: false,
-               isAdmin: false,
-               lastLogin: Date.now(),
-               createdAt: Date.now()
-             });
-           } else {
-             await setDoc(userRef, {
-               lastLogin: Date.now(),
-               displayName: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-               avatarUrl: currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`
-             }, { merge: true });
-           }
-         } catch (e) {
-           console.error("Failed to update user record", e);
-         }
+    const token = localStorage.getItem('fypmini_token');
+    if (!token) {
+      setIsAuthChecking(false);
+      return;
+    }
+
+    fetch('/api/user/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.user) {
+        setUser(data.user);
+      } else {
+        localStorage.removeItem('fypmini_token');
       }
-      
+    })
+    .catch(() => {
+      localStorage.removeItem('fypmini_token');
+    })
+    .finally(() => {
       setIsAuthChecking(false);
     });
-    return unsub;
   }, []);
+
+  const handleLoginSuccess = (userObj: any, token: string) => {
+    localStorage.setItem('fypmini_token', token);
+    setUser(userObj);
+  };
 
   if (isAuthChecking) {
     return (
@@ -684,7 +678,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (

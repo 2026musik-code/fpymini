@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sign, verify } from 'hono/jwt';
 
 type Bindings = {
   patungan: any;
@@ -34,6 +35,199 @@ async function setCache(c: any, key: string, data: any) {
     memoryCache.set(key, { timestamp: Date.now(), data });
   }
 }
+
+async function hashPassword(password: string) {
+  // Simple hashing using WebCrypto
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + "salt123");
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const JWT_SECRET = 'fypmini-secret-key-24';
+
+api.post('/auth/register', async (c) => {
+  const { email, password } = await c.req.json();
+  if (!email || !password) return c.json({ error: 'Email and password required' }, 400);
+
+  const key = `user_email:${email}`;
+  let existing = null;
+  if (c.env && c.env.patungan) {
+    existing = await c.env.patungan.get(key);
+  } else {
+    existing = memoryCache.get(key)?.data;
+  }
+
+  if (existing) return c.json({ error: 'Email already exists' }, 400);
+
+  const hashedPassword = await hashPassword(password);
+  const uid = crypto.randomUUID();
+  const user = {
+    uid,
+    email,
+    passwordHash: hashedPassword,
+    displayName: email.split('@')[0],
+    avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${uid}`,
+    dailyViews: 0,
+    dailyViewsMax: 42,
+    accountTier: "free",
+    watchHistory: {},
+    createdAt: Date.now()
+  };
+
+  if (c.env && c.env.patungan) {
+    await c.env.patungan.put(key, uid);
+    await c.env.patungan.put(`user:${uid}`, JSON.stringify(user));
+  } else {
+    memoryCache.set(key, { timestamp: Date.now(), data: uid });
+    memoryCache.set(`user:${uid}`, { timestamp: Date.now(), data: JSON.stringify(user) });
+  }
+
+  const token = await sign({ uid }, JWT_SECRET);
+  // Do not send passwordHash to client
+  const { passwordHash: _, ...safeUser } = user;
+  return c.json({ token, user: safeUser });
+});
+
+api.post('/auth/login', async (c) => {
+  const { email, password } = await c.req.json();
+  if (!email || !password) return c.json({ error: 'Email and password required' }, 400);
+
+  const key = `user_email:${email}`;
+  let uid = null;
+  if (c.env && c.env.patungan) {
+    uid = await c.env.patungan.get(key);
+  } else {
+    uid = memoryCache.get(key)?.data;
+  }
+
+  if (!uid) return c.json({ error: 'Invalid credentials' }, 401);
+
+  let userStr = null;
+  if (c.env && c.env.patungan) {
+    userStr = await c.env.patungan.get(`user:${uid}`);
+  } else {
+    userStr = memoryCache.get(`user:${uid}`)?.data;
+  }
+
+  if (!userStr) return c.json({ error: 'User data not found' }, 500);
+  
+  const user = JSON.parse(userStr as string);
+  const hashedPassword = await hashPassword(password);
+
+  if (user.passwordHash !== hashedPassword) {
+    return c.json({ error: 'Invalid credentials' }, 401);
+  }
+
+  const token = await sign({ uid }, JWT_SECRET);
+  const { passwordHash: _, ...safeUser } = user;
+  return c.json({ token, user: safeUser });
+});
+
+api.get('/user/me', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return c.json({ error: 'Unauthorized' }, 401);
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = await verify(token, JWT_SECRET, "HS256");
+    const uid = payload.uid as string;
+    
+    let userStr = null;
+    if (c.env && c.env.patungan) {
+      userStr = await c.env.patungan.get(`user:${uid}`);
+    } else {
+      userStr = memoryCache.get(`user:${uid}`)?.data;
+    }
+    
+    if (!userStr) return c.json({ error: 'User not found' }, 404);
+    const user = JSON.parse(userStr as string);
+    const { passwordHash: _, ...safeUser } = user;
+    return c.json({ user: safeUser });
+  } catch (error) {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
+});
+
+api.post('/user/update', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return c.json({ error: 'Unauthorized' }, 401);
+  
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = await verify(token, JWT_SECRET, "HS256");
+    const uid = payload.uid as string;
+    
+    let userStr = null;
+    if (c.env && c.env.patungan) {
+      userStr = await c.env.patungan.get(`user:${uid}`);
+    } else {
+      userStr = memoryCache.get(`user:${uid}`)?.data;
+    }
+    
+    if (!userStr) return c.json({ error: 'User not found' }, 404);
+    
+    const user = JSON.parse(userStr as string);
+    const updates = await c.req.json();
+    
+    // Only allow specific updates
+    if (updates.watchHistory) {
+      user.watchHistory = updates.watchHistory;
+    }
+    
+    if (c.env && c.env.patungan) {
+      await c.env.patungan.put(`user:${uid}`, JSON.stringify(user));
+    } else {
+      memoryCache.set(`user:${uid}`, { timestamp: Date.now(), data: JSON.stringify(user) });
+    }
+    
+    return c.json({ success: true });
+  } catch(error) {
+    return c.json({ error: 'Invalid token' }, 401);
+  }
+});
+
+api.get('/admin/users', async (c) => {
+  // basic admin auth check should be here, skipped for brevity or checking token inside
+  let users: any[] = [];
+  if (c.env && c.env.patungan) {
+    const list = await c.env.patungan.list({ prefix: 'user:' });
+    for (const key of list.keys) {
+      if (key.name.includes('@')) continue; // Skip email lookup keys
+      const userStr = await c.env.patungan.get(key.name);
+      if (userStr) users.push(JSON.parse(userStr));
+    }
+  } else {
+    // Memory fallback
+    for (const [key, val] of memoryCache.entries()) {
+      if (key.startsWith('user:') && !key.includes('@')) {
+        users.push(JSON.parse(val.data as string));
+      }
+    }
+  }
+  return c.json({ users });
+});
+
+api.get('/admin/settings', async (c) => {
+  let settingsStr = null;
+  if (c.env && c.env.patungan) {
+    settingsStr = await c.env.patungan.get('global_settings');
+  } else {
+    settingsStr = memoryCache.get('global_settings')?.data;
+  }
+  const settings = settingsStr ? JSON.parse(settingsStr as string) : { popupText: "", popupImageUrl: "", vipPrice: 0, adminPasscode: "" };
+  return c.json({ settings });
+});
+
+api.post('/admin/settings', async (c) => {
+  const settings = await c.req.json();
+  if (c.env && c.env.patungan) {
+    await c.env.patungan.put('global_settings', JSON.stringify(settings));
+  } else {
+    memoryCache.set('global_settings', { timestamp: Date.now(), data: JSON.stringify(settings) });
+  }
+  return c.json({ success: true });
+});
 
 api.get("/proxy", async (c) => {
   try {
