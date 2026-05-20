@@ -6,11 +6,16 @@ import api from './src/api';
 
 const app = new Hono();
 
+// Serve static assets explicitly
+app.use('/assets/*', serveStatic({ manifest }));
+
+// Root HTML
+app.get('/', serveStatic({ path: 'index.html', manifest }));
+
 // Mount the API routes
 app.route('/', api);
 
-// Serve static assets from Cloudflare Workers Sites
-app.get('/*', serveStatic({ manifest }));
-app.get('*', serveStatic({ path: 'index.html', manifest })); // SPA fallback
+// SPA fallback for any other route
+app.get('*', serveStatic({ path: 'index.html', manifest }));
 
 export default app;
