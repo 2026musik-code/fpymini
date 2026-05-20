@@ -22,3 +22,12 @@
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
 }
+
+video::cue {
+  transform: translateY(-15vh);
+  background-color: rgba(0, 0, 0, 0.75);
+  color: white;
+  font-size: 1.1rem;
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+}

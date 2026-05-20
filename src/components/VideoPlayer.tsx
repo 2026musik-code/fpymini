@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Play, Volume2, VolumeX, Download, Loader2, MoreHorizontal, Subtitles } from "lucide-react";
+import { Play, Volume2, VolumeX, Download, Loader2, MoreHorizontal, Subtitles, Settings, Check } from "lucide-react";
 import Hls from "hls.js";
 
 interface VideoPlayerProps {
@@ -19,6 +19,13 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [subtitles, setSubtitles] = useState<any[]>([]);
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [activeSubtitleIndex, setActiveSubtitleIndex] = useState(0);
+  const [showSubtitlesMenu, setShowSubtitlesMenu] = useState(false);
+  
+  const [levels, setLevels] = useState<any[]>([]);
+  const [currentLevel, setCurrentLevel] = useState<number>(-1); // -1 = auto
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [hasFetchedStream, setHasFetchedStream] = useState(false);
   const hlsRef = useRef<Hls | null>(null);
@@ -54,6 +61,8 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
   }, [isActive, isPlaying]);
 
   const handleVideoTap = () => {
+    setShowSettingsMenu(false);
+    setShowSubtitlesMenu(false);
     if (!showUI) {
       resetUITimer();
     } else {
@@ -273,8 +282,12 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
         hls.loadSource(streamUrl);
         hls.attachMedia(video);
         
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+           setLevels(data.levels);
            attemptPlay();
+        });
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+           setCurrentLevel(data.level);
         });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         if (video.src !== streamUrl) {
@@ -328,6 +341,25 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
     setIsMuted(!isMuted);
   };
 
+  const changeLevel = (levelIndex: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = levelIndex;
+      setCurrentLevel(levelIndex);
+    }
+    setShowSettingsMenu(false);
+  };
+
+  const changeSubtitle = (idx: number) => {
+    setActiveSubtitleIndex(idx);
+    setSubtitlesEnabled(true);
+    if (videoRef.current && videoRef.current.textTracks) {
+      for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+        videoRef.current.textTracks[i].mode = i === idx ? 'showing' : 'hidden';
+      }
+    }
+    setShowSubtitlesMenu(false);
+  };
+
   return (
     <div className="relative w-full h-full bg-zinc-950 snap-start flex justify-center items-center overflow-hidden">
       
@@ -351,6 +383,12 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
           }}
           onLoadedMetadata={() => {
             if (videoRef.current) setDuration(videoRef.current.duration);
+            // Apply correct subtitle state on load
+            if (videoRef.current && subtitles.length > 0) {
+               for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+                 videoRef.current.textTracks[i].mode = (subtitlesEnabled && i === activeSubtitleIndex) ? 'showing' : 'hidden';
+               }
+            }
           }}
           onEnded={() => {
             if (onEnded) onEnded();
@@ -363,8 +401,8 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
                kind="subtitles"
                src={`/api/subtitle-proxy?url=${encodeURIComponent(sub.url)}`}
                srcLang={sub.lang || sub.language || 'en'}
-               label={sub.label || sub.name || `Sub ${idx+1}`}
-               default={idx === 0}
+               label={sub.label || sub.name || sub.lang || sub.language || `Sub ${idx+1}`}
+               default={idx === activeSubtitleIndex}
              />
           ))}
         </video>
@@ -383,26 +421,96 @@ export default function VideoPlayer({ chapter, isActive, provider, prefetch = fa
 
       {/* Right Interaction Sidebar */}
       <div className={`absolute right-4 bottom-14 flex flex-col items-center gap-4 z-10 transition-opacity duration-300 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
-        {subtitles.length > 0 && (
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              const video = videoRef.current;
-              const newState = !subtitlesEnabled;
-              setSubtitlesEnabled(newState);
-              if (video && video.textTracks && video.textTracks.length > 0) {
-                 for(let i=0; i<video.textTracks.length; i++){
-                    video.textTracks[i].mode = (i === 0 && newState) ? 'showing' : 'hidden';
-                 }
-              }
-            }}
-            className={`p-3 bg-black/40 backdrop-blur-md rounded-full border transition-colors ${subtitlesEnabled ? 'border-gold-500 text-gold-500 hover:bg-black/60' : 'border-white/20 text-white hover:bg-black/60'}`}
-          >
-            <Subtitles className="w-5 h-5" />
-          </button>
+        
+        {/* Settings / Res Menu */}
+        {levels.length > 0 && (
+          <div className="relative flex justify-center">
+            {showSettingsMenu && (
+              <div 
+                className="absolute right-14 bottom-0 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-2 flex flex-col gap-1 min-w-[120px] origin-bottom-right"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-white/50 text-xs font-semibold px-3 py-1 uppercase tracking-wider">Quality</div>
+                <button 
+                   onClick={() => changeLevel(-1)}
+                   className={`px-3 py-2 text-sm rounded-lg flex items-center justify-between hover:bg-white/10 transition-colors ${currentLevel === -1 ? 'text-gold-500' : 'text-white'}`}
+                >
+                  Auto
+                  {currentLevel === -1 && <Check className="w-4 h-4 ml-2" />}
+                </button>
+                {levels.map((level, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => changeLevel(idx)}
+                    className={`px-3 py-2 text-sm rounded-lg flex items-center justify-between hover:bg-white/10 transition-colors ${currentLevel === idx ? 'text-gold-500' : 'text-white'}`}
+                  >
+                    {level.height}p
+                    {currentLevel === idx && <Check className="w-4 h-4 ml-2" />}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowSettingsMenu(!showSettingsMenu); setShowSubtitlesMenu(false); resetUITimer(); }}
+              className="p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/20 hover:bg-black/60 transition-colors"
+            >
+              <Settings className="w-6 h-6 text-white" />
+            </button>
+          </div>
         )}
+
+        {/* Subtitles Menu */}
+        {subtitles.length > 0 && (
+          <div className="relative flex justify-center">
+            {showSubtitlesMenu && (
+              <div 
+                className="absolute right-14 bottom-0 bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-2 flex flex-col gap-1 min-w-[140px] origin-bottom-right max-h-[40vh] overflow-y-auto no-scrollbar"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-white/50 text-xs font-semibold px-3 py-1 uppercase tracking-wider">Subtitles</div>
+                <button 
+                   onClick={() => {
+                     setSubtitlesEnabled(false);
+                     setShowSubtitlesMenu(false);
+                     if (videoRef.current) {
+                        for (let i = 0; i < videoRef.current.textTracks.length; i++) {
+                           videoRef.current.textTracks[i].mode = 'hidden';
+                        }
+                     }
+                   }}
+                   className={`px-3 py-2 text-sm rounded-lg flex items-center justify-between hover:bg-white/10 transition-colors ${!subtitlesEnabled ? 'text-gold-500' : 'text-white'}`}
+                >
+                  Off
+                  {!subtitlesEnabled && <Check className="w-4 h-4 ml-2" />}
+                </button>
+                {subtitles.map((sub, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => changeSubtitle(idx)}
+                    className={`px-3 py-2 text-sm rounded-lg flex items-center justify-between hover:bg-white/10 transition-colors ${(subtitlesEnabled && activeSubtitleIndex === idx) ? 'text-gold-500' : 'text-white'}`}
+                  >
+                    {sub.label || sub.name || sub.lang || sub.language || `Audio ${idx+1}`}
+                    {(subtitlesEnabled && activeSubtitleIndex === idx) && <Check className="w-4 h-4 ml-2 shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSubtitlesMenu(!showSubtitlesMenu);
+                setShowSettingsMenu(false);
+                resetUITimer();
+              }}
+              className={`p-3 bg-black/40 backdrop-blur-md rounded-full border transition-colors ${subtitlesEnabled ? 'border-gold-500 text-gold-500 hover:bg-black/60' : 'border-white/20 text-white hover:bg-black/60'}`}
+            >
+              <Subtitles className="w-6 h-6" />
+            </button>
+          </div>
+        )}
+
         <button 
-          onClick={(e) => { e.stopPropagation(); toggleMute(e); resetUITimer(); }}
+          onClick={(e) => { e.stopPropagation(); toggleMute(e); resetUITimer(); setShowSettingsMenu(false); setShowSubtitlesMenu(false); }}
           className="p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/20 hover:bg-black/60 transition-colors"
         >
           {isMuted ? (
