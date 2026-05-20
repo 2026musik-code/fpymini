@@ -6,7 +6,7 @@ type Bindings = {
   vpsai: any;
 };
 
-const api = new Hono<{ Bindings: Bindings }>().basePath('/api');
+const api = new Hono<{ Bindings: Bindings }>();
 
 // Simple memory cache fallback if KV is not available (e.g. local dev)
 const memoryCache = new Map<string, { timestamp: number, data: any }>();

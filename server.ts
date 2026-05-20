@@ -2,6 +2,7 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import { getRequestListener } from "@hono/node-server";
+import { Hono } from "hono";
 import { createServer as createViteServer } from "vite";
 import api from "./src/api";
 
@@ -16,7 +17,9 @@ async function startServer() {
     });
   }
 
-  const honoListener = getRequestListener(api.fetch);
+  const app = new Hono();
+  app.route('/api', api);
+  const honoListener = getRequestListener(app.fetch);
 
   const server = http.createServer((req, res) => {
     // Check if the request is an API request
