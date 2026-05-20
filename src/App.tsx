@@ -350,7 +350,13 @@ function MainApp() {
                         <h2 className="text-xl font-bold text-white mb-2">Guest User</h2>
                         <p className="text-zinc-400 text-sm mb-8 px-4">Login with Google to sync your watch history and upgrade your viewing limits.</p>
                         <button 
-                          onClick={loginWithGoogle}
+                          onClick={async () => {
+                            try {
+                              await loginWithGoogle();
+                            } catch (error: any) {
+                              alert("Login failed: " + error.message + "\n\nIf you see 'auth/unauthorized-domain', you need to add your Cloudflare Workers domain (the URL you are on now) to your Firebase Console -> Authentication -> Settings -> Authorized domains.");
+                            }
+                          }}
                           className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10"
                         >
                           <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -598,7 +604,13 @@ export default function App() {
            <h2 className="text-2xl font-bold text-white mb-2">Welcome to FYPMINI</h2>
            <p className="text-zinc-400 text-sm mb-8 px-4">Watch exclusive short dramas. Please login with Google to continue.</p>
            <button 
-             onClick={loginWithGoogle}
+             onClick={async () => {
+               try {
+                 await loginWithGoogle();
+               } catch (error: any) {
+                 alert("Login failed: " + error.message + "\n\nIf you see 'auth/unauthorized-domain', you need to add your Cloudflare Workers domain (the URL you are on now) to your Firebase Console -> Authentication -> Settings -> Authorized domains.");
+               }
+             }}
              className="flex items-center gap-3 bg-white text-black px-6 py-3 rounded-full font-semibold hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10"
            >
              <svg className="w-5 h-5" viewBox="0 0 24 24">
